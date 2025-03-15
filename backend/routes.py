@@ -13,10 +13,20 @@ def init_routes(app):
 
     @app.route('/api/unmapped', methods=['GET'])
     def get_unmapped():
-        details = db.session.query(PayerDetail).all()
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 100))  # Limit to 100 per request
+        offset = (page - 1) * per_page
+        
+        details = db.session.query(PayerDetail).offset(offset).limit(per_page).all()
         payer_groups = {}
         unmapped = []
         
+        # Load existing payers as baseline
+        all_payers = db.session.query(Payer).all()
+        for payer in all_payers:
+            payer_groups[(payer.payer_id, payer.payer_name)] = []
+
+        # Check only this page’s details
         for detail in details:
             matched = False
             for key in payer_groups:
@@ -35,7 +45,13 @@ def init_routes(app):
             if not matched and detail.payer_id not in [k[0] for k in payer_groups]:
                 payer_groups[(detail.payer_id, detail.payer_name)] = [detail]
         
-        return jsonify(unmapped)
+        total = 11384  # From map_payers.py output—hardcode for now
+        return jsonify({
+            "unmapped": unmapped,
+            "total": total,
+            "page": page,
+            "per_page": per_page
+        })
 
     @app.route('/api/map_payer', methods=['POST'])
     def map_payer():
