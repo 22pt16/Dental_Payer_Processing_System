@@ -1,9 +1,12 @@
 # backend/app.py
 from flask import Flask, jsonify
-from backend.models import db, PayerGroup, Payer, PayerDetail
+
 import os
 from dotenv import load_dotenv
-
+import sys
+# Add the root directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from backend.models import db, PayerGroup, Payer, PayerDetail
 load_dotenv()
 
 app = Flask(__name__)
