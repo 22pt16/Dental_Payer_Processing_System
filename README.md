@@ -4,8 +4,7 @@
 ```markdown
 # Dental Insurance Payer Processing System
 
- **Date**: March 16, 2025 (Post-deadline refinement)
-
+![Alt Text](output.png)
 ## Problem Statement
 In the dental insurance industry, payments from insurance companies (payers) are processed via Electronic Remittance Advice (ERA) documents. This project designs and implements a system to manage payer information complexity across multiple data sources, addressing inconsistencies, deduplication, and display name standardization.
 
