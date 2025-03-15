@@ -98,13 +98,13 @@ with app.app_context():
                 print(f"Processing row {index + 1} in sheet: {sheet_name}")
 
             # Skip rows with missing payer_name or payer_id
-            if pd.isna(row.get('payer_name')) or pd.isna(row.get('payer_id')):
+            if pd.isna(row['payer_name']) or pd.isna(row['payer_id']):
                 print(f"Skipping row {index + 1} due to missing payer_name or payer_id")
                 continue
 
             # Get payer details
-            payer_id = row.get('payer_id')
-            payer_name = row.get('payer_name')
+            payer_id = str(row['payer_id'])  # Convert payer_id to string
+            payer_name = row['payer_name']
 
             # Check if the payer already exists (exact match)
             payer = db.session.query(Payer).filter(Payer.payer_id == payer_id).first()
