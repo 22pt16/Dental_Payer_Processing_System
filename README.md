@@ -4,8 +4,7 @@
 ```markdown
 # Dental Insurance Payer Processing System
 
- **Date**: March 16, 2025 (Post-deadline refinement)
-
+![Alt Text](output.png)
 ## Problem Statement
 In the dental insurance industry, payments from insurance companies (payers) are processed via Electronic Remittance Advice (ERA) documents. This project designs and implements a system to manage payer information complexity across multiple data sources, addressing inconsistencies, deduplication, and display name standardization.
 
@@ -104,11 +103,10 @@ npm run dev
 - **Different Names, Same Payer Number**: Manual mapping resolves ambiguity.
 - **Same Name, Different Numbers**: Fuzzy matching + manual override.
 - **Semantic Matching**: 70-85% similarity threshold with UI confirmation.
+- - Nested groups (e.g., "DeltaDental" > "DeltaDentalArizona").
 
 ## Future Enhancements
 - Collapsible hierarchy sections.
-- Nested groups (e.g., "DeltaDental" > "DeltaDentalArizona").
-- Precomputed mapping status in DB.
 - API for all groups without pagination.
 
 ## Data Source
