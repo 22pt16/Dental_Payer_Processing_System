@@ -5,28 +5,47 @@ import './index.css';
 function App() {
   const [unmapped, setUnmapped] = useState([]);
   const [payers, setPayers] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  
+  const [unmappedPage, setUnmappedPage] = useState(1);
+  const [payersPage, setPayersPage] = useState(1);
+  const [groupsPage, setGroupsPage] = useState(1);
+  
+  const [unmappedTotal, setUnmappedTotal] = useState(0);
+  const [payersTotal, setPayersTotal] = useState(0);
+  const [groupsTotal, setGroupsTotal] = useState(0);
+  
   const perPage = 10;
 
   useEffect(() => {
-    axios.get(`http://localhost:5000/api/unmapped?page=${page}&per_page=${perPage}`)
+    axios.get(`http://localhost:5000/api/unmapped?page=${unmappedPage}&per_page=${perPage}`)
       .then(response => {
         setUnmapped(response.data.unmapped);
-        setTotal(response.data.total);
+        setUnmappedTotal(response.data.total);
       })
       .catch(error => setError('Failed to load unmapped payers'));
 
-    axios.get('http://localhost:5000/api/payers')
-      .then(response => setPayers(response.data))
+    axios.get(`http://localhost:5000/api/payers?page=${payersPage}&per_page=${perPage}`)
+      .then(response => {
+        setPayers(response.data.payers);
+        setPayersTotal(response.data.total);
+      })
       .catch(error => setError('Failed to load payers'));
-  }, [page]);
+
+    axios.get(`http://localhost:5000/api/groups?page=${groupsPage}&per_page=${perPage}`)
+      .then(response => {
+        setGroups(response.data.groups);
+        setGroupsTotal(response.data.total);
+      })
+      .catch(error => setError('Failed to load groups'));
+  }, [unmappedPage, payersPage, groupsPage]);
 
   const handleMapPayer = (detailId, payerId) => {
     axios.post('http://localhost:5000/api/map_payer', { detail_id: detailId, payer_id: payerId })
       .then(() => {
         setUnmapped(unmapped.filter(item => item.detail_id !== detailId));
+        setUnmappedTotal(unmappedTotal - 1);  // Update total dynamically
         alert('Payer mapped successfully!');
       })
       .catch(error => console.error('Error mapping payer:', error));
@@ -34,12 +53,20 @@ function App() {
 
   const handleUpdatePrettyName = (payerId, prettyName) => {
     axios.post('http://localhost:5000/api/update_pretty_name', { payer_id: payerId, pretty_name: prettyName })
-      .then(() => alert('Pretty name updated!'))
+      .then(() => {
+        setPayers(payers.map(p => p.payer_id === payerId ? { ...p, pretty_name: prettyName } : p));
+        alert('Pretty name updated!');
+      })
       .catch(error => console.error('Error updating pretty name:', error));
   };
 
   const handleUpdateGroup = (payerId, groupId) => {
-    console.log(`Update ${payerId} to group ${groupId}`);
+    axios.post('http://localhost:5000/api/update_group', { payer_id: payerId, group_id: groupId })
+      .then(() => {
+        setPayers(payers.map(p => p.payer_id === payerId ? { ...p, group_id: groupId } : p));
+        alert('Group updated!');
+      })
+      .catch(error => console.error('Error updating group:', error));
   };
 
   if (error) return <div style={{ color: 'red', textAlign: 'center' }}>{error}</div>;
@@ -48,8 +75,9 @@ function App() {
     <div>
       <h1>Dental Payer Management</h1>
       <div className="container">
+        {/* Pane 1: Unmapped Mapping */}
         <div className="pane">
-          <h2>Unmapped Payers ({total})</h2>
+          <h2>Unmapped Payers ({unmappedTotal})</h2>
           {unmapped.length === 0 ? (
             <p>Loading...</p>
           ) : (
@@ -82,49 +110,58 @@ function App() {
                 </tbody>
               </table>
               <div style={{ marginTop: '10px' }}>
-                <button onClick={() => setPage(page - 1)} disabled={page === 1}>Previous</button>
-                <span> Page {page} of {Math.ceil(total / perPage)} </span>
-                <button onClick={() => setPage(page + 1)} disabled={page >= Math.ceil(total / perPage)}>Next</button>
+                <button onClick={() => setUnmappedPage(unmappedPage - 1)} disabled={unmappedPage === 1}>Previous</button>
+                <span> Page {unmappedPage} of {Math.ceil(unmappedTotal / perPage)} </span>
+                <button onClick={() => setUnmappedPage(unmappedPage + 1)} disabled={unmappedPage >= Math.ceil(unmappedTotal / perPage)}>Next</button>
               </div>
             </>
           )}
         </div>
 
+        {/* Pane 2: Pretty Names */}
         <div className="pane">
-          <h2>Pretty Names</h2>
+          <h2>Pretty Names ({payersTotal})</h2>
           {payers.length === 0 ? (
             <p>Loading...</p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Pretty Name</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payers.slice(0, 10).map(payer => (
-                  <tr key={payer.payer_id}>
-                    <td>{payer.payer_id}</td>
-                    <td>{payer.payer_name}</td>
-                    <td>
-                      <input
-                        type="text"
-                        defaultValue={payer.pretty_name}
-                        onBlur={(e) => handleUpdatePrettyName(payer.payer_id, e.target.value)}
-                      />
-                    </td>
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Pretty Name</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {payers.map(payer => (
+                    <tr key={payer.payer_id}>
+                      <td>{payer.payer_id}</td>
+                      <td>{payer.payer_name}</td>
+                      <td>
+                        <input
+                          type="text"
+                          defaultValue={payer.pretty_name}
+                          onBlur={(e) => handleUpdatePrettyName(payer.payer_id, e.target.value)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginTop: '10px' }}>
+                <button onClick={() => setPayersPage(payersPage - 1)} disabled={payersPage === 1}>Previous</button>
+                <span> Page {payersPage} of {Math.ceil(payersTotal / perPage)} </span>
+                <button onClick={() => setPayersPage(payersPage + 1)} disabled={payersPage >= Math.ceil(payersTotal / perPage)}>Next</button>
+              </div>
+            </>
           )}
         </div>
 
+        {/* Pane 3: Payer Hierarchies */}
         <div className="pane">
-          <h2>Payer Hierarchies</h2>
-          {payers.length === 0 ? (
+          <h2>Payer Hierarchies ({payersTotal})</h2>
+          {payers.length === 0 || groups.length === 0 ? (
             <p>Loading...</p>
           ) : (
             <>
@@ -137,22 +174,40 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {payers.slice(0, 10).map(payer => (
+                  {payers.map(payer => (
                     <tr key={payer.payer_id}>
                       <td>{payer.payer_id}</td>
                       <td>{payer.payer_name}</td>
                       <td>
-                        <input
-                          type="text"
-                          defaultValue={payer.group_id}
-                          onBlur={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
-                        />
+                        <select
+                          value={payer.group_id || ''}
+                          onChange={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
+                        >
+                          <option value="">Select Group</option>
+                          {groups.map(group => (
+                            <option key={group.group_id} value={group.group_id}>
+                              {group.group_name}
+                            </option>
+                          ))}
+                          <option value="NEW_GROUP">New Group...</option>
+                        </select>
+                        {payer.group_id === 'NEW_GROUP' && (
+                          <input
+                            type="text"
+                            placeholder="Enter new group ID"
+                            onBlur={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
+                          />
+                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p style={{ fontSize: '12px', color: '#666' }}>Hierarchy not fully implemented—edit manually.</p>
+              <div style={{ marginTop: '10px' }}>
+                <button onClick={() => setPayersPage(payersPage - 1)} disabled={payersPage === 1}>Previous</button>
+                <span> Page {payersPage} of {Math.ceil(payersTotal / perPage)} </span>
+                <button onClick={() => setPayersPage(payersPage + 1)} disabled={payersPage >= Math.ceil(payersTotal / perPage)}>Next</button>
+              </div>
             </>
           )}
         </div>
