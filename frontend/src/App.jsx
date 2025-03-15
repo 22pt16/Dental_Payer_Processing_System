@@ -6,6 +6,7 @@ function App() {
   const [unmapped, setUnmapped] = useState([]);
   const [payers, setPayers] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
   const [error, setError] = useState(null);
   
   const [unmappedPage, setUnmappedPage] = useState(1);
@@ -24,28 +25,49 @@ function App() {
         setUnmapped(response.data.unmapped);
         setUnmappedTotal(response.data.total);
       })
-      .catch(error => setError('Failed to load unmapped payers'));
+      .catch(error => {
+        console.error('Unmapped error:', error);
+        setError('Failed to load unmapped payers');
+      });
 
     axios.get(`http://localhost:5000/api/payers?page=${payersPage}&per_page=${perPage}`)
       .then(response => {
         setPayers(response.data.payers);
         setPayersTotal(response.data.total);
       })
-      .catch(error => setError('Failed to load payers'));
+      .catch(error => {
+        console.error('Payers error:', error);
+        setError('Failed to load payers');
+      });
 
     axios.get(`http://localhost:5000/api/groups?page=${groupsPage}&per_page=${perPage}`)
       .then(response => {
         setGroups(response.data.groups);
         setGroupsTotal(response.data.total);
       })
-      .catch(error => setError('Failed to load groups'));
+      .catch(error => {
+        console.error('Groups error:', error);
+        setError('Failed to load groups');
+      });
+
+    axios.get('http://localhost:5000/api/groups?per_page=1000')
+      .then(response => {
+        const sortedGroups = response.data.groups.sort((a, b) => 
+          a.group_name.localeCompare(b.group_name)
+        );
+        setAllGroups(sortedGroups);
+      })
+      .catch(error => {
+        console.error('All groups error:', error);
+        setError('Failed to load all groups');
+      });
   }, [unmappedPage, payersPage, groupsPage]);
 
   const handleMapPayer = (detailId, payerId) => {
     axios.post('http://localhost:5000/api/map_payer', { detail_id: detailId, payer_id: payerId })
       .then(() => {
         setUnmapped(unmapped.filter(item => item.detail_id !== detailId));
-        setUnmappedTotal(unmappedTotal - 1);  // Update total dynamically
+        setUnmappedTotal(unmappedTotal - 1);
         alert('Payer mapped successfully!');
       })
       .catch(error => console.error('Error mapping payer:', error));
@@ -61,13 +83,47 @@ function App() {
   };
 
   const handleUpdateGroup = (payerId, groupId) => {
+    if (groupId === 'NEW_GROUP') return;
+
     axios.post('http://localhost:5000/api/update_group', { payer_id: payerId, group_id: groupId })
       .then(() => {
         setPayers(payers.map(p => p.payer_id === payerId ? { ...p, group_id: groupId } : p));
+        if (!allGroups.find(g => g.group_id === groupId)) {
+          axios.get('http://localhost:5000/api/groups?per_page=1000')
+            .then(response => {
+              const sortedGroups = response.data.groups.sort((a, b) => 
+                a.group_name.localeCompare(b.group_name)
+              );
+              setAllGroups(sortedGroups);
+            });
+        }
         alert('Group updated!');
       })
       .catch(error => console.error('Error updating group:', error));
   };
+
+  const handleNewGroup = (payerId, newGroupId) => {
+    if (!newGroupId) return;
+    axios.post('http://localhost:5000/api/update_group', { payer_id: payerId, group_id: newGroupId })
+      .then(() => {
+        setPayers(payers.map(p => p.payer_id === payerId ? { ...p, group_id: newGroupId } : p));
+        const newGroup = { group_id: newGroupId, group_name: newGroupId };
+        const updatedGroups = [...allGroups, newGroup].sort((a, b) => 
+          a.group_name.localeCompare(b.group_name)
+        );
+        setAllGroups(updatedGroups);
+        setGroupsTotal(groupsTotal + 1);
+        alert('New group added and assigned!');
+      })
+      .catch(error => console.error('Error adding new group:', error));
+  };
+
+  const groupedPayers = payers.reduce((acc, payer) => {
+    const groupId = payer.group_id || 'UNASSIGNED';
+    if (!acc[groupId]) acc[groupId] = [];
+    acc[groupId].push(payer);
+    return acc;
+  }, {});
 
   if (error) return <div style={{ color: 'red', textAlign: 'center' }}>{error}</div>;
 
@@ -161,48 +217,55 @@ function App() {
         {/* Pane 3: Payer Hierarchies */}
         <div className="pane">
           <h2>Payer Hierarchies ({payersTotal})</h2>
-          {payers.length === 0 || groups.length === 0 ? (
+          {payers.length === 0 || allGroups.length === 0 ? (
             <p>Loading...</p>
           ) : (
             <>
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Group</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payers.map(payer => (
-                    <tr key={payer.payer_id}>
-                      <td>{payer.payer_id}</td>
-                      <td>{payer.payer_name}</td>
-                      <td>
-                        <select
-                          value={payer.group_id || ''}
-                          onChange={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
-                        >
-                          <option value="">Select Group</option>
-                          {groups.map(group => (
-                            <option key={group.group_id} value={group.group_id}>
-                              {group.group_name}
-                            </option>
-                          ))}
-                          <option value="NEW_GROUP">New Group...</option>
-                        </select>
-                        {payer.group_id === 'NEW_GROUP' && (
-                          <input
-                            type="text"
-                            placeholder="Enter new group ID"
-                            onBlur={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {Object.entries(groupedPayers).map(([groupId, groupPayers]) => (
+                  <div key={groupId} style={{ marginBottom: '20px' }}>
+                    <h3>{allGroups.find(g => g.group_id === groupId)?.group_name || groupId} ({groupPayers.length})</h3>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Name</th>
+                          <th>Group</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupPayers.map(payer => (
+                          <tr key={payer.payer_id}>
+                            <td>{payer.payer_id}</td>
+                            <td>{payer.payer_name}</td>
+                            <td>
+                              <select
+                                value={payer.group_id || ''}
+                                onChange={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
+                              >
+                                <option value="">Select Group</option>
+                                {allGroups.map(group => (
+                                  <option key={group.group_id} value={group.group_id}>
+                                    {group.group_name}
+                                  </option>
+                                ))}
+                                <option value="NEW_GROUP">New Group...</option>
+                              </select>
+                              {payer.group_id === 'NEW_GROUP' && (
+                                <input
+                                  type="text"
+                                  placeholder="Enter new group ID"
+                                  onBlur={(e) => handleNewGroup(payer.payer_id, e.target.value)}
+                                />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
               <div style={{ marginTop: '10px' }}>
                 <button onClick={() => setPayersPage(payersPage - 1)} disabled={payersPage === 1}>Previous</button>
                 <span> Page {payersPage} of {Math.ceil(payersTotal / perPage)} </span>
