@@ -5,22 +5,16 @@ from models import db, PayerDetail, Payer, PayerGroup
 from sqlalchemy import or_, not_
 import re
 
-
 def get_similarity_score(name1, name2):
     return fuzz.ratio(name1.lower(), name2.lower())
 
 def generate_pretty_name(payer_name):
-    """Generate a clean pretty name from payer_name."""
-    # Remove parentheses and contents
     name = re.sub(r'\s*\([^)]*\)', '', payer_name)
-    # Remove common suffixes
     suffixes = ['Inc', 'Corporation', 'LLC', 'Administrators', 'Services', 'Plans']
     for suffix in suffixes:
         name = re.sub(rf'\s+{suffix}$', '', name, flags=re.IGNORECASE)
-    # Take first significant words (up to 2)
     words = name.split()
-    return ' '.join(words[:2]) if len(words) > 1 else name
-
+    return ''.join(word.capitalize() for word in words[:2]) if len(words) > 1 else name.capitalize()
 
 def init_routes(app):
     @app.route('/')
@@ -34,19 +28,12 @@ def init_routes(app):
         offset = (page - 1) * per_page
         
         details = db.session.query(PayerDetail).offset(offset).limit(per_page).all()
-        payer_groups = {}
         unmapped = []
+        payer_names = {p.payer_id: p.payer_name for p in db.session.query(Payer).all()}
         
-        all_payers = db.session.query(Payer).all()
-        payer_ids = [p.payer_id for p in all_payers]
-        payer_names = {p.payer_id: p.payer_name for p in all_payers}
-        for payer in all_payers:
-            payer_groups[(payer.payer_id, payer.payer_name)] = []
-
         for detail in details:
             matched = False
-            for key in payer_groups:
-                canonical_id, canonical_name = key
+            for payer_id, canonical_name in payer_names.items():
                 name_score = get_similarity_score(detail.payer_name, canonical_name)
                 if name_score > 70 and name_score <= 85:
                     unmapped.append({
@@ -58,21 +45,28 @@ def init_routes(app):
                     })
                     matched = True
                     break
-            if not matched and detail.payer_id not in [k[0] for k in payer_groups]:
-                payer_groups[(detail.payer_id, detail.payer_name)] = [detail]
+            if not matched and detail.payer_id not in payer_names:
+                unmapped.append({
+                    "detail_id": detail.detail_id,
+                    "payer_name": detail.payer_name,
+                    "payer_id": detail.payer_id,
+                    "source": detail.source,
+                    "state": detail.state
+                })
 
         total_unmapped = db.session.query(PayerDetail).filter(
             or_(
                 PayerDetail.payer_id.in_(
                     db.session.query(PayerDetail.payer_id).filter(
                         PayerDetail.payer_name.in_([
-                            detail.payer_name for detail in details
-                            if any(70 < get_similarity_score(detail.payer_name, payer_names.get(p_id, '')) <= 85
-                                   for p_id in payer_ids)
+                            d.payer_name for d in details if any(
+                                70 < get_similarity_score(d.payer_name, pn) <= 85
+                                for pn in payer_names.values()
+                            )
                         ])
                     )
                 ),
-                not_(PayerDetail.payer_id.in_(payer_ids))
+                not_(PayerDetail.payer_id.in_(payer_names.keys()))
             )
         ).count()
 
@@ -112,7 +106,7 @@ def init_routes(app):
             "payers": [{
                 "payer_id": p.payer_id,
                 "payer_name": p.payer_name,
-                "pretty_name": generate_pretty_name(p.payer_name),
+                "pretty_name": p.pretty_name if p.pretty_name else generate_pretty_name(p.payer_name),
                 "group_id": p.group_id
             } for p in payers],
             "total": total,
@@ -123,17 +117,46 @@ def init_routes(app):
     @app.route('/api/groups', methods=['GET'])
     def get_groups():
         page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 10))
+        per_page = int(request.args.get('per_page', 1000))
         offset = (page - 1) * per_page
         
         groups = db.session.query(PayerGroup).offset(offset).limit(per_page).all()
         total = db.session.query(PayerGroup).count()
         
+        def infer_hierarchy(group, all_groups, processed=None):
+            if processed is None:
+                processed = set()
+            if group.group_id in processed:
+                return None  # Avoid infinite recursion
+            processed.add(group.group_id)
+            
+            children = []
+            for other in all_groups:
+                if other.group_id != group.group_id:
+                    similarity = fuzz.ratio(group.group_name.lower(), other.group_name.lower())
+                    if similarity > 80 and other.group_name.startswith(group.group_name):
+                        child = infer_hierarchy(other, all_groups, processed)
+                        if child:
+                            children.append(child)
+            return {
+                "group_id": group.group_id,
+                "group_name": group.group_name,
+                "children": children
+            }
+        
+        # Find top-level groups (not children of others)
+        top_level = []
+        for g in groups:
+            is_child = False
+            for other in groups:
+                if g.group_id != other.group_id and fuzz.ratio(g.group_name.lower(), other.group_name.lower()) > 80 and g.group_name.startswith(other.group_name):
+                    is_child = True
+                    break
+            if not is_child:
+                top_level.append(infer_hierarchy(g, groups))
+        
         return jsonify({
-            "groups": [{
-                "group_id": g.group_id,
-                "group_name": g.group_name
-            } for g in groups],
+            "groups": top_level,
             "total": total,
             "page": page,
             "per_page": per_page

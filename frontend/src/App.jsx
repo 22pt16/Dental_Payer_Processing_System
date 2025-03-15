@@ -1,15 +1,11 @@
+// frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './index.css';
 
-// Utility function to convert string to PascalCase
 const toPascalCase = (str) => {
   if (!str) return '';
-  return str
-    .toLowerCase()
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
+  return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('');
 };
 
 function App() {
@@ -18,60 +14,54 @@ function App() {
   const [groups, setGroups] = useState([]);
   const [allGroups, setAllGroups] = useState([]);
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true); // Add loading state
   
   const [unmappedPage, setUnmappedPage] = useState(1);
   const [payersPage, setPayersPage] = useState(1);
-  const [groupsPage, setGroupsPage] = useState(1);
-  
   const [unmappedTotal, setUnmappedTotal] = useState(0);
   const [payersTotal, setPayersTotal] = useState(0);
-  const [groupsTotal, setGroupsTotal] = useState(0);
-  
   const perPage = 10;
 
   useEffect(() => {
-    axios.get(`http://localhost:5000/api/unmapped?page=${unmappedPage}&per_page=${perPage}`)
-      .then(response => {
-        setUnmapped(response.data.unmapped);
-        setUnmappedTotal(response.data.total);
-      })
-      .catch(error => {
-        console.error('Unmapped error:', error);
-        setError('Failed to load unmapped payers');
-      });
+    const fetchData = async () => {
+      try {
+        // Fetch unmapped
+        const unmappedRes = await axios.get(`http://localhost:5000/api/unmapped?page=${unmappedPage}&per_page=${perPage}`);
+        console.log('Unmapped:', unmappedRes.data);
+        setUnmapped(unmappedRes.data.unmapped || []);
+        setUnmappedTotal(unmappedRes.data.total || 0);
 
-    axios.get(`http://localhost:5000/api/payers?page=${payersPage}&per_page=${perPage}`)
-      .then(response => {
-        setPayers(response.data.payers);
-        setPayersTotal(response.data.total);
-      })
-      .catch(error => {
-        console.error('Payers error:', error);
-        setError('Failed to load payers');
-      });
+        // Fetch payers
+        const payersRes = await axios.get(`http://localhost:5000/api/payers?page=${payersPage}&per_page=${perPage}`);
+        console.log('Payers:', payersRes.data);
+        setPayers(payersRes.data.payers || []);
+        setPayersTotal(payersRes.data.total || 0);
 
-    axios.get(`http://localhost:5000/api/groups?page=${groupsPage}&per_page=${perPage}`)
-      .then(response => {
-        setGroups(response.data.groups);
-        setGroupsTotal(response.data.total);
-      })
-      .catch(error => {
-        console.error('Groups error:', error);
-        setError('Failed to load groups');
-      });
+        // Fetch groups (nested)
+        const groupsRes = await axios.get('http://localhost:5000/api/groups?per_page=1000');
+        console.log('Groups:', groupsRes.data);
+        setGroups(groupsRes.data.groups || []);
 
-    axios.get('http://localhost:5000/api/groups?per_page=1000')
-      .then(response => {
-        const sortedGroups = response.data.groups.sort((a, b) => 
-          a.group_name.localeCompare(b.group_name)
-        );
-        setAllGroups(sortedGroups);
-      })
-      .catch(error => {
-        console.error('All groups error:', error);
-        setError('Failed to load all groups');
-      });
-  }, [unmappedPage, payersPage, groupsPage]);
+        // Flatten groups for dropdowns
+        const flattenGroups = (groupList, acc = []) => {
+          groupList.forEach(group => {
+            acc.push({ group_id: group.group_id, group_name: group.group_name });
+            if (group.children && group.children.length > 0) flattenGroups(group.children, acc);
+          });
+          return acc;
+        };
+        const flatGroups = flattenGroups(groupsRes.data.groups);
+        setAllGroups(flatGroups.sort((a, b) => a.group_name.localeCompare(b.group_name)));
+
+        setLoading(false);
+      } catch (error) {
+        console.error('Fetch Error:', error.message, error.response?.data);
+        setError(`Failed to load data: ${error.message}`);
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [unmappedPage, payersPage]);
 
   const handleMapPayer = (detailId, payerId) => {
     axios.post('http://localhost:5000/api/map_payer', { detail_id: detailId, payer_id: payerId })
@@ -101,10 +91,14 @@ function App() {
         if (!allGroups.find(g => g.group_id === groupId)) {
           axios.get('http://localhost:5000/api/groups?per_page=1000')
             .then(response => {
-              const sortedGroups = response.data.groups.sort((a, b) => 
-                a.group_name.localeCompare(b.group_name)
-              );
-              setAllGroups(sortedGroups);
+              const flattenGroups = (groupList, acc = []) => {
+                groupList.forEach(group => {
+                  acc.push({ group_id: group.group_id, group_name: group.group_name });
+                  if (group.children && group.children.length > 0) flattenGroups(group.children, acc);
+                });
+                return acc;
+              };
+              setAllGroups(flattenGroups(response.data.groups).sort((a, b) => a.group_name.localeCompare(b.group_name)));
             });
         }
         alert('Group updated!');
@@ -114,16 +108,13 @@ function App() {
 
   const handleNewGroup = (payerId, newGroupId) => {
     if (!newGroupId) return;
-    const formattedGroupId = toPascalCase(newGroupId);  // Format to PascalCase
+    const formattedGroupId = toPascalCase(newGroupId);
     axios.post('http://localhost:5000/api/update_group', { payer_id: payerId, group_id: formattedGroupId })
       .then(() => {
         setPayers(payers.map(p => p.payer_id === payerId ? { ...p, group_id: formattedGroupId } : p));
         const newGroup = { group_id: formattedGroupId, group_name: formattedGroupId };
-        const updatedGroups = [...allGroups, newGroup].sort((a, b) => 
-          a.group_name.localeCompare(b.group_name)
-        );
+        const updatedGroups = [...allGroups, newGroup].sort((a, b) => a.group_name.localeCompare(b.group_name));
         setAllGroups(updatedGroups);
-        setGroupsTotal(groupsTotal + 1);
         alert('New group added and assigned!');
       })
       .catch(error => console.error('Error adding new group:', error));
@@ -136,17 +127,67 @@ function App() {
     return acc;
   }, {});
 
+  const renderGroup = (group, level = 0) => {
+    const groupPayers = groupedPayers[group.group_id] || [];
+    return (
+      <div key={group.group_id} style={{ marginLeft: `${level * 20}px`, marginBottom: '20px' }}>
+        <h3>{toPascalCase(group.group_name)} ({groupPayers.length})</h3>
+        {groupPayers.length > 0 && (
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Group</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupPayers.map(payer => (
+                <tr key={payer.payer_id}>
+                  <td>{payer.payer_id}</td>
+                  <td>{toPascalCase(payer.payer_name)}</td>
+                  <td>
+                    <select
+                      value={payer.group_id || ''}
+                      onChange={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
+                    >
+                      <option value="">Select Group</option>
+                      {allGroups.map(g => (
+                        <option key={g.group_id} value={g.group_id}>
+                          {toPascalCase(g.group_name)}
+                        </option>
+                      ))}
+                      <option value="NEW_GROUP">New Group...</option>
+                    </select>
+                    {payer.group_id === 'NEW_GROUP' && (
+                      <input
+                        type="text"
+                        placeholder="Enter new group ID"
+                        onBlur={(e) => handleNewGroup(payer.payer_id, e.target.value)}
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {group.children && group.children.map(child => renderGroup(child, level + 1))}
+      </div>
+    );
+  };
+
+  if (loading) return <div>Loading...</div>;
   if (error) return <div style={{ color: 'red', textAlign: 'center' }}>{error}</div>;
 
   return (
     <div>
       <h1>Dental Payer Management</h1>
       <div className="container">
-        {/* Pane 1: Unmapped Mapping */}
         <div className="pane">
           <h2>Unmapped Payers ({unmappedTotal})</h2>
           {unmapped.length === 0 ? (
-            <p>Loading...</p>
+            <p>No unmapped payers</p>
           ) : (
             <>
               <table>
@@ -185,11 +226,10 @@ function App() {
           )}
         </div>
 
-        {/* Pane 2: Pretty Names */}
         <div className="pane">
           <h2>Pretty Names ({payersTotal})</h2>
           {payers.length === 0 ? (
-            <p>Loading...</p>
+            <p>No payers</p>
           ) : (
             <>
               <table>
@@ -225,17 +265,17 @@ function App() {
           )}
         </div>
 
-        {/* Pane 3: Payer Hierarchies */}
         <div className="pane">
           <h2>Payer Hierarchies ({payersTotal})</h2>
-          {payers.length === 0 || allGroups.length === 0 ? (
-            <p>Loading...</p>
+          {payers.length === 0 || groups.length === 0 ? (
+            <p>No groups or payers</p>
           ) : (
             <>
               <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {Object.entries(groupedPayers).map(([groupId, groupPayers]) => (
-                  <div key={groupId} style={{ marginBottom: '20px' }}>
-                    <h3>{toPascalCase(allGroups.find(g => g.group_id === groupId)?.group_name || groupId)} ({groupPayers.length})</h3>
+                {groups.map(group => renderGroup(group))}
+                {groupedPayers['UNASSIGNED'] && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <h3>UNASSIGNED ({groupedPayers['UNASSIGNED'].length})</h3>
                     <table>
                       <thead>
                         <tr>
@@ -245,7 +285,7 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {groupPayers.map(payer => (
+                        {groupedPayers['UNASSIGNED'].map(payer => (
                           <tr key={payer.payer_id}>
                             <td>{payer.payer_id}</td>
                             <td>{toPascalCase(payer.payer_name)}</td>
@@ -255,9 +295,9 @@ function App() {
                                 onChange={(e) => handleUpdateGroup(payer.payer_id, e.target.value)}
                               >
                                 <option value="">Select Group</option>
-                                {allGroups.map(group => (
-                                  <option key={group.group_id} value={group.group_id}>
-                                    {toPascalCase(group.group_name)}
+                                {allGroups.map(g => (
+                                  <option key={g.group_id} value={g.group_id}>
+                                    {toPascalCase(g.group_name)}
                                   </option>
                                 ))}
                                 <option value="NEW_GROUP">New Group...</option>
@@ -275,7 +315,7 @@ function App() {
                       </tbody>
                     </table>
                   </div>
-                ))}
+                )}
               </div>
               <div style={{ marginTop: '10px' }}>
                 <button onClick={() => setPayersPage(payersPage - 1)} disabled={payersPage === 1}>Previous</button>
