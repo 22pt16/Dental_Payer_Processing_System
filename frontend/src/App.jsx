@@ -2,6 +2,16 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './index.css';
 
+// Utility function to convert string to PascalCase
+const toPascalCase = (str) => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('');
+};
+
 function App() {
   const [unmapped, setUnmapped] = useState([]);
   const [payers, setPayers] = useState([]);
@@ -104,10 +114,11 @@ function App() {
 
   const handleNewGroup = (payerId, newGroupId) => {
     if (!newGroupId) return;
-    axios.post('http://localhost:5000/api/update_group', { payer_id: payerId, group_id: newGroupId })
+    const formattedGroupId = toPascalCase(newGroupId);  // Format to PascalCase
+    axios.post('http://localhost:5000/api/update_group', { payer_id: payerId, group_id: formattedGroupId })
       .then(() => {
-        setPayers(payers.map(p => p.payer_id === payerId ? { ...p, group_id: newGroupId } : p));
-        const newGroup = { group_id: newGroupId, group_name: newGroupId };
+        setPayers(payers.map(p => p.payer_id === payerId ? { ...p, group_id: formattedGroupId } : p));
+        const newGroup = { group_id: formattedGroupId, group_name: formattedGroupId };
         const updatedGroups = [...allGroups, newGroup].sort((a, b) => 
           a.group_name.localeCompare(b.group_name)
         );
@@ -149,14 +160,14 @@ function App() {
                 <tbody>
                   {unmapped.map(item => (
                     <tr key={item.detail_id}>
-                      <td>{item.payer_name}</td>
+                      <td>{toPascalCase(item.payer_name)}</td>
                       <td>{item.payer_id}</td>
                       <td>
                         <select onChange={(e) => handleMapPayer(item.detail_id, e.target.value)}>
                           <option value="">Select</option>
                           {payers.map(payer => (
                             <option key={payer.payer_id} value={payer.payer_id}>
-                              {payer.pretty_name || payer.payer_name}
+                              {toPascalCase(payer.pretty_name || payer.payer_name)}
                             </option>
                           ))}
                         </select>
@@ -193,11 +204,11 @@ function App() {
                   {payers.map(payer => (
                     <tr key={payer.payer_id}>
                       <td>{payer.payer_id}</td>
-                      <td>{payer.payer_name}</td>
+                      <td>{toPascalCase(payer.payer_name)}</td>
                       <td>
                         <input
                           type="text"
-                          defaultValue={payer.pretty_name}
+                          defaultValue={toPascalCase(payer.pretty_name)}
                           onBlur={(e) => handleUpdatePrettyName(payer.payer_id, e.target.value)}
                         />
                       </td>
@@ -224,7 +235,7 @@ function App() {
               <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
                 {Object.entries(groupedPayers).map(([groupId, groupPayers]) => (
                   <div key={groupId} style={{ marginBottom: '20px' }}>
-                    <h3>{allGroups.find(g => g.group_id === groupId)?.group_name || groupId} ({groupPayers.length})</h3>
+                    <h3>{toPascalCase(allGroups.find(g => g.group_id === groupId)?.group_name || groupId)} ({groupPayers.length})</h3>
                     <table>
                       <thead>
                         <tr>
@@ -237,7 +248,7 @@ function App() {
                         {groupPayers.map(payer => (
                           <tr key={payer.payer_id}>
                             <td>{payer.payer_id}</td>
-                            <td>{payer.payer_name}</td>
+                            <td>{toPascalCase(payer.payer_name)}</td>
                             <td>
                               <select
                                 value={payer.group_id || ''}
@@ -246,7 +257,7 @@ function App() {
                                 <option value="">Select Group</option>
                                 {allGroups.map(group => (
                                   <option key={group.group_id} value={group.group_id}>
-                                    {group.group_name}
+                                    {toPascalCase(group.group_name)}
                                   </option>
                                 ))}
                                 <option value="NEW_GROUP">New Group...</option>
