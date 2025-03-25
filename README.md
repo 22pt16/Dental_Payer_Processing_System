@@ -1,116 +1,145 @@
-
-### `README.md`
-
 ```markdown
 # Dental Insurance Payer Processing System
 
-![Alt Text](output.png)
-## Problem Statement
-In the dental insurance industry, payments from insurance companies (payers) are processed via Electronic Remittance Advice (ERA) documents. This project designs and implements a system to manage payer information complexity across multiple data sources, addressing inconsistencies, deduplication, and display name standardization.
+![System Workflow](output.png)
 
-### Current Challenges
-1. **Inconsistent Payer Information**:
-   - ERA payments link payers inconsistently (e.g., initial payer with number vs. DentalXChange ERA without number).
-2. **Payer Deduplication**:
-   - System tracks payer groups (e.g., Delta Dental) but struggles to deduplicate similar payers (e.g., "DELTA DENTAL OF ARIZONA, 86027" vs. "DELTA DENTAL OF ARIZONA, CDKY1").
-3. **Display Name Issues**:
-   - No standardized "pretty names" for consistent UI/claims representation.
+## Overview
+The **Dental Insurance Payer Processing System** efficiently processes Electronic Remittance Advice (ERA) documents by resolving inconsistencies, deduplicating payer information, and standardizing display names for accurate claims processing.
 
-### Payer Structure
-- **Payer_Details**: Raw payer instances from payment documents.
-  - Examples:
-    - "DELTA DENTAL OF ARIZONA | 86027 | (no EIN)"
-    - "DELTA DENTAL OF ARIZONA | (no payer number) | 1860274899"
-    - "FENWICK & WEST LLP | 62308 | (no EIN)" (same as "TOWER RESEARCH CAPITAL LLC | 62308")
-- **Payers**: Unique insurance companies within payer groups.
-  - Examples:
-    - "Delta Dental of Arizona" (Delta Dental group)
-    - "Delta Dental of California" (Delta Dental group)
-- **Payer_Groups**: Parent organizations owning multiple payers.
-  - Example: "Delta Dental"
+## Key Challenges
+1. **Inconsistent Payer Information:**  
+   - ERA payments reference payers inconsistently (e.g., initial payer with number vs. DentalXChange ERA without number).
+2. **Payer Deduplication:**  
+   - Deduplication of payers with slight variations in names or payer numbers (e.g., `"DELTA DENTAL OF ARIZONA, 86027"` vs. `"DELTA DENTAL OF ARIZONA, CDKY1"`).
+3. **Display Name Standardization:**  
+   - Lack of canonical names ("pretty names") for consistent UI and claims representation.
 
-### Edge Cases
-1. Different names, same payer number → different payers.
-2. Different names, same payer number → same payer.
-3. Same name, different payer numbers → same payer.
-4. Slightly varying names → semantically same payer.
+---
 
-## Solution
+## Tech Stack
+- **Backend:** Flask (Python 3.8+)  
+- **Frontend:** React (Vite)  
+- **Database:** PostgreSQL  
+- **Fuzzy Matching:** `fuzzywuzzy` for identifying and mapping similar payers.  
 
-### 1. Database Schema Design
-- **Tables**:
-  - `payer_groups`:
-    - `group_id` (PK), `group_name`
-  - `payers`:
-    - `payer_id` (PK), `payer_name`, `pretty_name`, `group_id` (FK to `payer_groups`)
-  - `payer_details`:
-    - `detail_id` (PK), `payer_name`, `payer_id` (FK to `payers`), `source`, `state`
-- **Relationships**:
-  - One `payer_group` to many `payers` (1:N).
-  - One `payer` to many `payer_details` (1:N).
-- **Normalization**: Handles examples and edge cases (e.g., same `payer_id` with different names).
+---
 
-### 2. Mapping Algorithm
-- **Logic** (`routes.py`):
-  - **Fuzzy Matching**: Uses `fuzzywuzzy` (70-85% similarity) to identify unmapped `payer_details`.
-  - **Deduplication**: 
-    - Groups `payer_details` by `payer_id` or semantic similarity to canonical `payers`.
-    - Handles edge cases via manual mapping UI.
-  - **Output**: Maps raw payers from Excel into `payers` and `payer_details` tables.
-- **Endpoints**:
-  - `/api/unmapped`: Identifies and paginates unmapped details.
-  - `/api/map_payer`: Links `payer_details` to `payers`.
+## System Architecture
 
-### 3. User Interface
-- **Components** (`App.jsx`):
-  - **Unmapped Payers**:
-    - Paginated table with dropdown for manual mapping.
-  - **Pretty Names**:
-    - Paginated table with editable inputs; auto-generates PascalCase names (e.g., "DeltaDental").
-  - **Payer Hierarchies**:
-    - Grouped view by `group_id`, with dropdown for reassignment and new group creation.
-- **Features**:
-  - PascalCase formatting for all names.
-  - Sorted group dropdown.
+### Database Schema Design
+- **Tables:**
+   - `payer_groups`: Stores parent organizations (`group_id`, `group_name`).
+   - `payers`: Stores unique payer entities (`payer_id`, `payer_name`, `pretty_name`, `group_id`).
+   - `payer_details`: Holds raw payer details (`detail_id`, `payer_name`, `payer_id`, `source`, `state`).
 
+- **Relationships:**
+   - One `payer_group` → Many `payers` (1:N).
+   - One `payer` → Many `payer_details` (1:N).
+- **Normalization:** Ensures deduplication and consistent mapping of raw payers.
 
-## Setup
+---
+
+### Mapping and Deduplication Algorithm
+- **Fuzzy Matching:**
+   - Utilizes `fuzzywuzzy` with a 70-85% similarity threshold to identify and map unmapped `payer_details`.
+- **Deduplication Logic:**
+   - Groups `payer_details` by `payer_id` or semantic similarity to canonical `payers`.
+   - Manual mapping available via the UI for edge cases.
+- **API Endpoints:**
+   - `/api/unmapped`: Retrieves and paginates unmapped payer details.
+   - `/api/map_payer`: Maps `payer_details` to canonical `payers`.
+
+---
+
+### User Interface
+- **Components:**
+   - **Unmapped Payers:** Paginated table with manual mapping dropdown.
+   - **Pretty Names:** Editable inputs for standardizing payer names to PascalCase.
+   - **Payer Hierarchies:** Grouped view of `payer_groups` with options to assign/reassign payers and create new groups.
+
+- **Features:**
+   - Consistent PascalCase formatting.
+   - Grouped dropdowns for efficient navigation.
+   - Manual override for ambiguous mappings.
+
+---
+
+## Setup Instructions
+
 ### Prerequisites
 - Python 3.8+
-- SQLite
+- PostgreSQL
+- Node.js 14+
 
-### Backend
-```bash
+---
+
+### Backend Setup
+
+# Navigate to backend directory
 cd backend
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Mac/Linux
+# OR
+venv\Scripts\activate     # On Windows
+
+# Install dependencies
 pip install -r requirements.txt
-python app.py
-```
 
-### Frontend
-```bash
+# Set environment variables
+export FLASK_APP=app.py
+export DATABASE_URL=postgresql://username:password@localhost/payer_db
+
+# Run Flask application
+flask run
+
+
+---
+
+### Frontend Setup
+
+# Navigate to frontend directory
 cd frontend
-npm install
-npm run dev
-```
-- Open `http://localhost:5173`.
 
-## Usage
-- **Mapping**: Map unmapped payers via dropdown in "Unmapped Payers".
-- **Pretty Names**: Edit and save in "Pretty Names".
-- **Hierarchies**: Assign/manage groups in "Payer Hierarchies".
+# Install dependencies
+npm install
+
+# Run the development server
+npm run dev
+
+- Access the UI at `http://localhost:5173`.
+
+---
+
+## Usage Guide
+- **Map Unmapped Payers:** Assign raw payer details to canonical payers.
+- **Standardize Pretty Names:** Edit and save canonical payer names.
+- **Manage Hierarchies:** Group payers into logical hierarchies for better management.
+
+---
 
 ## Edge Case Handling
-- **Different Names, Same Payer Number**: Manual mapping resolves ambiguity.
-- **Same Name, Different Numbers**: Fuzzy matching + manual override.
-- **Semantic Matching**: 70-85% similarity threshold with UI confirmation.
-- - Nested groups (e.g., "DeltaDental" > "DeltaDentalArizona").
+1. **Different Names, Same Payer Number:** Manual mapping resolves ambiguity.
+2. **Same Name, Different Numbers:** Fuzzy matching + manual override.
+3. **Semantic Matching:** 70-85% similarity threshold with UI confirmation.
+4. **Nested Groups:** Supports hierarchical groupings (e.g., `DeltaDental` → `DeltaDentalArizona`).
+
+---
+
+## API Documentation
+- `/api/unmapped` – Retrieves unmapped payers.
+- `/api/map_payer` – Maps payer details to canonical payers.
+- `/api/groups` – Retrieves all payer groups with hierarchies.
+
+---
 
 ## Future Enhancements
-- Collapsible hierarchy sections.
-- API for all groups without pagination.
+- Collapsible hierarchy views for grouped payers.
+- API to retrieve all groups without pagination.
+- Integration of machine learning models for improved fuzzy matching.
+
+---
 
 ## Data Source
-- Refer to the attached Excel sheet for raw payer data to map into canonical payers.
-
-
-
+The system processes ERA documents from multiple sources, ensuring consistency and deduplication across payer information.
